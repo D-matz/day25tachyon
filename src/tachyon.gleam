@@ -306,6 +306,12 @@ fn view(model: Model) -> Element(Msg) {
     ],
     [
       h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
+      h.p([], [
+        h.a([a.href("https://adventofcode.com/2025/day/7")], [
+          h.text("Advent of Code day 7"),
+        ]),
+        h.text(" visualization: (quantum) particle splitting"),
+      ]),
       h.text(
         case model.curr_b {
           Normal(_) -> "split count: "

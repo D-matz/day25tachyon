@@ -1,5 +1,6 @@
 // IMPORTS ---------------------------------------------------------------------
 
+import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/set.{type Set}
@@ -39,21 +40,25 @@ const init_input = ".......S.......
 
 // MODEL -----------------------------------------------------------------------
 
+type Beams {
+  Normal(Set(Int))
+  Quantum(Dict(Int, Int))
+}
+
 type Model {
   Model(
     in: String,
-    curr_beams: Set(Int),
+    curr_b: Beams,
     lines_todo: List(String),
     lines_done: List(String),
     on_index: Int,
-    num_splits: Int,
-    is_quantum: Bool,
+    count: Int,
   )
 }
 
 fn init(starting_example) -> #(Model, Effect(Msg)) {
   let starting_index = 0
-  let m = new_model(starting_example, starting_index, False)
+  let m = new_model(starting_example, starting_index, Normal(set.new()))
   let tick_ms = 3000 / list.length(m.lines_todo)
   #(m, tick(TimerTick(tick_ms, starting_index)))
 }
@@ -64,10 +69,16 @@ type TimerTick {
   TimerTick(millisec: Int, index: Int)
 }
 
+type Counter {
+  Splits(Int)
+  QTimelines(Int)
+}
+
 type Msg {
   ClockTickedForward(TimerTick)
   UserEnteredInput(String)
   UserClickedQuantum
+  UserClickedReplay
 }
 
 fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
@@ -79,8 +90,7 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           case m.lines_todo {
             [] -> #(m, effect.none())
             [line, ..lines_todo] -> {
-              let #(curr_beams, this_line_splits) =
-                next_beams(line, m.curr_beams)
+              let #(curr_beams, this_line_count) = next_beams(line, m.curr_b)
               let curr_line =
                 list.fold(
                   from: #("", 0),
@@ -91,9 +101,18 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                       "S" -> "S"
                       "s" -> "s"
                       _ -> {
-                        case curr_beams |> set.contains(letter_num) {
-                          True -> "|"
-                          False -> letter
+                        case curr_beams {
+                          Normal(beams) ->
+                            case beams |> set.contains(letter_num) {
+                              True -> "|"
+                              False -> letter
+                            }
+                          Quantum(beams) -> {
+                            case beams |> dict.get(letter_num) {
+                              Ok(n) -> "|"
+                              Error(_) -> letter
+                            }
+                          }
                         }
                       }
                     }
@@ -105,11 +124,13 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                 Model(
                   in: m.in,
                   on_index: m.on_index,
-                  is_quantum: m.is_quantum,
-                  curr_beams:,
+                  curr_b: curr_beams,
                   lines_done:,
                   lines_todo:,
-                  num_splits: m.num_splits + this_line_splits,
+                  count: case this_line_count {
+                    QTimelines(ct) -> ct
+                    Splits(ct) -> m.count + ct
+                  },
                 ),
                 tick(timer),
               )
@@ -120,13 +141,31 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     UserEnteredInput(input) -> {
       let new_index = m.on_index + 1
-      let m = new_model(input, new_index, m.is_quantum)
+      let m =
+        new_model(input, new_index, case m.curr_b {
+          Normal(_) -> Normal(set.new())
+          Quantum(_) -> Quantum(dict.new())
+        })
       let tick_ms = 3000 / list.length(m.lines_todo)
       #(m, tick(TimerTick(tick_ms, new_index)))
     }
     UserClickedQuantum -> {
       let new_index = m.on_index + 1
-      let m = new_model(m.in, new_index, !m.is_quantum)
+      let m =
+        new_model(m.in, new_index, case m.curr_b {
+          Quantum(_) -> Normal(set.new())
+          Normal(_) -> Quantum(dict.new())
+        })
+      let tick_ms = 3000 / list.length(m.lines_todo)
+      #(m, tick(TimerTick(tick_ms, new_index)))
+    }
+    UserClickedReplay -> {
+      let new_index = m.on_index + 1
+      let m =
+        new_model(m.in, new_index, case m.curr_b {
+          Normal(_) -> Normal(set.new())
+          Quantum(_) -> Quantum(dict.new())
+        })
       let tick_ms = 3000 / list.length(m.lines_todo)
       #(m, tick(TimerTick(tick_ms, new_index)))
     }
@@ -145,100 +184,206 @@ fn set_timeout(_delay: Int, _cb: fn() -> a) -> Nil {
   Nil
 }
 
-fn new_model(input: String, curr_index: Int, is_quantum: Bool) {
+fn new_model(input: String, curr_index: Int, new_beams: Beams) {
   Model(
-    is_quantum,
     in: input,
-    curr_beams: set.new(),
+    curr_b: new_beams,
     lines_todo: input |> string.split("\n"),
     lines_done: [],
     on_index: curr_index,
-    num_splits: 0,
+    count: 0,
   )
 }
 
-fn next_beams(input: String, old_beams: Set(Int)) {
-  let split_beams =
-    list.fold(
-      from: #(set.new(), 0, 0),
-      over: input |> string.to_graphemes,
-      with: fn(acc, letter) {
-        let letter_num = acc.1 + 1
-        let acc_set = acc.0
-        let split_count = acc.2
-        let #(new_acc_set, new_split_count) = case
-          old_beams |> set.contains(letter_num)
-        {
-          False -> {
-            let new_letter = case letter {
-              "S" -> acc_set |> set.insert(letter_num)
-              "s" -> acc_set |> set.insert(letter_num)
-              _ -> acc_set
+fn next_beams(input: String, old: Beams) {
+  case old {
+    Normal(old_beams) -> {
+      let split_beams =
+        list.fold(
+          from: #(set.new(), 0, 0),
+          over: input |> string.to_graphemes,
+          with: fn(acc, letter) {
+            let letter_num = acc.1 + 1
+            let acc_set = acc.0
+            let split_count = acc.2
+            let #(new_acc_set, new_split_count) = case
+              old_beams |> set.contains(letter_num)
+            {
+              False -> {
+                let new_letter = case letter {
+                  "S" -> acc_set |> set.insert(letter_num)
+                  "s" -> acc_set |> set.insert(letter_num)
+                  _ -> acc_set
+                }
+                #(new_letter, split_count)
+              }
+              True ->
+                case letter {
+                  "^" -> #(
+                    acc_set
+                      |> set.delete(letter_num)
+                      |> set.insert(letter_num + 1)
+                      |> set.insert(letter_num - 1),
+                    split_count + 1,
+                  )
+                  _ -> #(acc_set |> set.insert(letter_num), split_count)
+                }
             }
-            #(new_letter, split_count)
-          }
-          True ->
-            case letter {
-              "^" -> #(
-                acc_set
-                  |> set.delete(letter_num)
-                  |> set.insert(letter_num + 1)
-                  |> set.insert(letter_num - 1),
-                split_count + 1,
-              )
-              _ -> #(acc_set |> set.insert(letter_num), split_count)
+            #(new_acc_set, letter_num, new_split_count)
+          },
+        )
+      #(Normal(split_beams.0), Splits(split_beams.2))
+    }
+    Quantum(old_beams) -> {
+      let split_beams =
+        list.fold(
+          from: #(dict.new(), 0),
+          over: input |> string.to_graphemes,
+          with: fn(acc, letter) {
+            let letter_num = acc.1 + 1
+            let acc_dict = acc.0
+            let new_acc_dict = case old_beams |> dict.get(letter_num) {
+              Error(_) -> {
+                case letter {
+                  "S" -> acc_dict |> dict.insert(letter_num, 1)
+                  "s" -> acc_dict |> dict.insert(letter_num, 1)
+                  _ -> acc_dict
+                }
+              }
+              Ok(beam_count) ->
+                case letter {
+                  "^" -> {
+                    let left = letter_num - 1
+                    let left_beams_new = case acc_dict |> dict.get(left) {
+                      Ok(left_count) -> left_count + beam_count
+                      Error(_) -> beam_count
+                    }
+                    let right = letter_num + 1
+                    let right_beams_new = case acc_dict |> dict.get(right) {
+                      Ok(right_count) -> right_count + beam_count
+                      Error(_) -> beam_count
+                    }
+                    acc_dict
+                    |> dict.insert(left, left_beams_new)
+                    |> dict.insert(right, right_beams_new)
+                    |> dict.delete(letter_num)
+                  }
+                  _ -> {
+                    let beams_line_dict_and_above = case
+                      acc_dict |> dict.get(letter_num)
+                    {
+                      Ok(dict_beams) -> {
+                        //needed if we have beam_count from above + beams inserted by left splitter
+                        dict_beams + beam_count
+                      }
+                      Error(_) -> {
+                        beam_count
+                      }
+                    }
+                    acc_dict
+                    |> dict.insert(letter_num, beams_line_dict_and_above)
+                  }
+                }
             }
-        }
-        #(new_acc_set, letter_num, new_split_count)
-      },
-    )
-  #(split_beams.0, split_beams.2)
+            #(new_acc_dict, letter_num)
+          },
+        )
+      let count_quantum_beams =
+        dict.fold(from: 0, over: split_beams.0, with: fn(acc, _, v) { acc + v })
+      #(Quantum(split_beams.0), QTimelines(count_quantum_beams))
+    }
+  }
 }
 
 // VIEW ------------------------------------------------------------------------
 
 fn view(model: Model) -> Element(Msg) {
-  h.article([], [
-    h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
-    h.p([], [
-      h.text("split count: " <> model.num_splits |> int.to_string),
-      h.br([]),
-      h.button([event.on_click(UserClickedQuantum)], [
-        h.text(case model.is_quantum {
-          False -> "Enable Quantum Tachyon Manifold"
-          True -> "Disable Quantum Tachyon Manifold"
-        }),
-      ]),
-    ]),
-    h.div(
-      [
-        a.style("display", "flex"),
-        a.style("flex-wrap", "wrap"),
-        a.style("gap", "8px"),
-      ],
-      [
-        h.textarea(
+  h.article(
+    [
+      a.style("display", "flex"),
+      a.style("flex-direction", "column"),
+      a.style("gap", "5px"),
+    ],
+    [
+      h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
+      h.text(
+        case model.curr_b {
+          Normal(_) -> "split count: "
+          Quantum(_) -> "timeline count: "
+        }
+        <> model.count |> int.to_string,
+      ),
+      h.button(
+        [
+          event.on_click(UserClickedQuantum),
+          a.style("width", "235px"),
+          a.style("padding", "3px"),
+        ],
+        [
+          h.text(case model.curr_b {
+            Normal(_) -> "Enable Quantum Tachyon Manifold"
+            Quantum(_) -> "Disable Quantum Tachyon Manifold"
+          }),
+        ],
+      ),
+      h.div(
+        [
+          a.style("display", "flex"),
+          a.style("flex-wrap", "wrap"),
+          a.style("gap", "8px"),
+        ],
+        [
+          h.textarea(
+            [
+              a.id("input"),
+              a.style("height", "260px"),
+              a.style("width", "130px"),
+              event.on_input(UserEnteredInput),
+            ],
+            model.in,
+          ),
+          h.pre(
+            [
+              a.style("margin-top", "0px"),
+              case model.curr_b {
+                Normal(_) -> a.style("border", "1px solid #2f2f2f")
+                Quantum(_) ->
+                  a.styles([
+                    #("border", "1px solid #a6f0fc"),
+                    #("box-shadow", "0 0 50px #a6f0fc"),
+                  ])
+              },
+            ],
+            [
+              h.text(
+                model.lines_done
+                |> list.append(model.lines_todo)
+                |> string.join("\n"),
+              ),
+            ],
+          ),
+        ],
+      ),
+      h.div([], [
+        h.button(
           [
-            a.id("input"),
-            a.style("height", "260px"),
-            a.style("width", "130px"),
-            event.on_input(UserEnteredInput),
+            event.on_click(UserClickedReplay),
+            a.style("width", "fit-content"),
+            a.style("margin", "5px"),
           ],
-          model.in,
+          [
+            h.text("Replay"),
+          ],
         ),
-        h.pre(
+        h.a(
           [
-            a.style("margin-top", "0px"),
-          ],
-          [
-            h.text(
-              model.lines_done
-              |> list.append(model.lines_todo)
-              |> string.join("\n"),
+            a.href(
+              "https://github.com/D-matz/day25tachyon/blob/main/src/tachyon.gleam",
             ),
           ],
+          [h.text("Source")],
         ),
-      ],
-    ),
-  ])
+      ]),
+    ],
+  )
 }

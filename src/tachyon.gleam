@@ -201,7 +201,7 @@ fn view(model: Model) -> Element(Msg) {
   h.article([], [
     h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
     h.p([], [
-      h.text("split count " <> model.num_splits |> int.to_string),
+      h.text("split count: " <> model.num_splits |> int.to_string),
       h.br([]),
       h.button([event.on_click(UserClickedQuantum)], [
         h.text(case model.is_quantum {
@@ -220,7 +220,7 @@ fn view(model: Model) -> Element(Msg) {
         h.textarea(
           [
             a.id("input"),
-            a.style("height", "300px"),
+            a.style("height", "260px"),
             a.style("width", "130px"),
             event.on_input(UserEnteredInput),
           ],

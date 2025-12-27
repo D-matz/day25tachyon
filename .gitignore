@@ -2,7 +2,7 @@
 *.ez
 /build
 erl_crash.dump
-
+.DS_Store/
 #Added automatically by Lustre Dev Tools
 /.lustre
 /dist

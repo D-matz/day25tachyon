@@ -140,7 +140,7 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     #([new_letter, ..acc.0], letter_num)
                   },
                 ).0
-              let ascii_line = curr_line |> list.append([h.text("\n")])
+              let ascii_line = [h.text("\n"), ..curr_line] |> list.reverse
               let lines_done = m.lines_done |> list.append(ascii_line)
               #(
                 Model(
@@ -245,7 +245,9 @@ fn next_beams(input: String, old: Beams) {
                       |> set.insert(letter_num - 1),
                     split_count + 1,
                   )
-                  _ -> #(acc_set |> set.insert(letter_num), split_count)
+                  "." -> #(acc_set |> set.insert(letter_num), split_count)
+                  _ -> #(acc_set, split_count)
+                  // not in problem but stopping on other chars
                 }
             }
             #(new_acc_set, letter_num, new_split_count)
@@ -287,7 +289,7 @@ fn next_beams(input: String, old: Beams) {
                     |> dict.insert(right, right_beams_new)
                     |> dict.delete(letter_num)
                   }
-                  _ -> {
+                  "." -> {
                     let beams_line_dict_and_above = case
                       acc_dict |> dict.get(letter_num)
                     {
@@ -302,6 +304,8 @@ fn next_beams(input: String, old: Beams) {
                     acc_dict
                     |> dict.insert(letter_num, beams_line_dict_and_above)
                   }
+                  _ -> acc_dict
+                  // not in problem but stopping on other chars
                 }
             }
             #(new_acc_dict, letter_num)

@@ -95,6 +95,10 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             [] -> #(m, effect.none())
             [line, ..lines_todo] -> {
               let #(curr_beams, this_line_count) = next_beams(line, m.curr_b)
+              let new_count = case this_line_count {
+                QTimelines(ct) -> ct
+                Splits(ct) -> m.count + ct
+              }
               let curr_line =
                 list.fold(
                   from: #([], 0),
@@ -115,7 +119,7 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                             case beams |> dict.get(letter_num) {
                               Ok(n) -> {
                                 let color_hex =
-                                  { 0xBF - { { 0xBF * n } / m.count } }
+                                  { 0xBF - { { 0xBF * n } / new_count } }
                                   |> int.to_base16
                                 h.span(
                                   [
@@ -145,10 +149,7 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                   curr_b: curr_beams,
                   lines_done:,
                   lines_todo:,
-                  count: case this_line_count {
-                    QTimelines(ct) -> ct
-                    Splits(ct) -> m.count + ct
-                  },
+                  count: new_count,
                 ),
                 tick(timer),
               )
@@ -395,8 +396,8 @@ fn view(model: Model) -> Element(Msg) {
           h.pre(
             [
               a.style("margin-top", "0px"),
-              a.style("max-height", "65vh"),
-              a.style("overflow", "auto"),
+              // a.style("max-height", "65vh"),
+              // a.style("overflow", "auto"),
               case model.curr_b {
                 Normal(_) -> a.style("border", "1px solid #2f2f2f")
                 Quantum(_) ->

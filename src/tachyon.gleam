@@ -363,6 +363,7 @@ fn view(model: Model) -> Element(Msg) {
             event.on_click(UserClickedReplay),
             a.style("width", "fit-content"),
             a.style("margin", "5px"),
+            a.style("padding", "3px"),
           ],
           [
             h.text("Replay"),

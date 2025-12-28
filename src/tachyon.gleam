@@ -45,12 +45,16 @@ type Beams {
   Quantum(Dict(Int, Int))
 }
 
+// type Idk {
+//   Idk(elt: Element(Msg))
+// }
+
 type Model {
   Model(
     in: String,
     curr_b: Beams,
     lines_todo: List(String),
-    lines_done: List(String),
+    lines_done: List(Element(Msg)),
     on_index: Int,
     count: Int,
   )
@@ -93,33 +97,47 @@ fn update(m: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               let #(curr_beams, this_line_count) = next_beams(line, m.curr_b)
               let curr_line =
                 list.fold(
-                  from: #("", 0),
+                  from: #([], 0),
                   over: line |> string.to_graphemes,
                   with: fn(acc, letter) {
                     let letter_num = acc.1 + 1
                     let new_letter = case letter {
-                      "S" -> "S"
-                      "s" -> "s"
+                      "S" -> h.text("S")
+                      "s" -> h.text("s")
                       _ -> {
                         case curr_beams {
                           Normal(beams) ->
                             case beams |> set.contains(letter_num) {
-                              True -> "|"
-                              False -> letter
+                              True -> h.text("|")
+                              False -> h.text(letter)
                             }
                           Quantum(beams) -> {
                             case beams |> dict.get(letter_num) {
-                              Ok(n) -> "|"
-                              Error(_) -> letter
+                              Ok(n) -> {
+                                let color_hex =
+                                  { 0xBF - { { 0xBF * n } / m.count } }
+                                  |> int.to_base16
+                                h.span(
+                                  [
+                                    a.style(
+                                      "color",
+                                      "#" <> color_hex <> color_hex <> color_hex,
+                                    ),
+                                  ],
+                                  [h.text("|")],
+                                )
+                              }
+                              Error(_) -> h.text(letter)
                             }
                           }
                         }
                       }
                     }
-                    #(acc.0 <> new_letter, letter_num)
+                    #([new_letter, ..acc.0], letter_num)
                   },
                 ).0
-              let lines_done = m.lines_done |> list.append([curr_line])
+              let ascii_line = curr_line |> list.append([h.text("\n")])
+              let lines_done = m.lines_done |> list.append(ascii_line)
               #(
                 Model(
                   in: m.in,
@@ -298,6 +316,7 @@ fn next_beams(input: String, old: Beams) {
 // VIEW ------------------------------------------------------------------------
 
 fn view(model: Model) -> Element(Msg) {
+  // let uhh = Idk(elt: h.p([], [h.text("hi")]))
   h.article(
     [
       a.style("display", "flex"),
@@ -305,38 +324,63 @@ fn view(model: Model) -> Element(Msg) {
       a.style("gap", "5px"),
     ],
     [
+      // uhh.elt,
+      // uhh.elt,
+      // uhh.elt,
+      // uhh.elt,
       h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
       h.p([], [
         h.a([a.href("https://adventofcode.com/2025/day/7")], [
           h.text("Advent of Code day 7"),
         ]),
-        h.text(" visualization: (quantum) particle splitting"),
+        h.text(" visualization: (quantum) tachyon manifold particle splitting "),
+        h.a(
+          [
+            a.href(
+              "https://github.com/D-matz/day25tachyon/blob/main/src/tachyon.gleam",
+            ),
+          ],
+          [h.text("(source)")],
+        ),
       ]),
-      h.text(
-        case model.curr_b {
-          Normal(_) -> "split count: "
-          Quantum(_) -> "timeline count: "
-        }
-        <> model.count |> int.to_string,
-      ),
-      h.button(
-        [
-          event.on_click(UserClickedQuantum),
-          a.style("width", "235px"),
-          a.style("padding", "3px"),
-        ],
-        [
-          h.text(case model.curr_b {
-            Normal(_) -> "Enable Quantum Tachyon Manifold"
-            Quantum(_) -> "Disable Quantum Tachyon Manifold"
-          }),
-        ],
-      ),
+      h.div([], [
+        h.button(
+          [
+            event.on_click(UserClickedQuantum),
+            a.style("width", "115px"),
+            a.style("padding", "3px"),
+          ],
+          [
+            h.text(case model.curr_b {
+              Normal(_) -> "Enable Quantum"
+              Quantum(_) -> "Disable Quantum"
+            }),
+          ],
+        ),
+        h.button(
+          [
+            event.on_click(UserClickedReplay),
+            a.style("width", "fit-content"),
+            a.style("margin", "5px"),
+          ],
+          [
+            h.text("Replay"),
+          ],
+        ),
+        h.text(
+          case model.curr_b {
+            Normal(_) -> "split count: "
+            Quantum(_) -> "timeline count: "
+          }
+          <> model.count |> int.to_string,
+        ),
+      ]),
       h.div(
         [
           a.style("display", "flex"),
           a.style("flex-wrap", "wrap"),
           a.style("gap", "8px"),
+          a.style("align-items", "flex-start"),
         ],
         [
           h.textarea(
@@ -351,6 +395,8 @@ fn view(model: Model) -> Element(Msg) {
           h.pre(
             [
               a.style("margin-top", "0px"),
+              a.style("max-height", "65vh"),
+              a.style("overflow", "auto"),
               case model.curr_b {
                 Normal(_) -> a.style("border", "1px solid #2f2f2f")
                 Quantum(_) ->
@@ -360,36 +406,16 @@ fn view(model: Model) -> Element(Msg) {
                   ])
               },
             ],
-            [
-              h.text(
-                model.lines_done
-                |> list.append(model.lines_todo)
-                |> string.join("\n"),
-              ),
-            ],
+            model.lines_done
+              |> list.append([
+                h.text(
+                  model.lines_todo
+                  |> string.join("\n"),
+                ),
+              ]),
           ),
         ],
       ),
-      h.div([], [
-        h.button(
-          [
-            event.on_click(UserClickedReplay),
-            a.style("width", "fit-content"),
-            a.style("margin", "5px"),
-          ],
-          [
-            h.text("Replay"),
-          ],
-        ),
-        h.a(
-          [
-            a.href(
-              "https://github.com/D-matz/day25tachyon/blob/main/src/tachyon.gleam",
-            ),
-          ],
-          [h.text("Source")],
-        ),
-      ]),
     ],
   )
 }

@@ -1,5 +1,3 @@
-// IMPORTS ---------------------------------------------------------------------
-
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
@@ -44,10 +42,6 @@ type Beams {
   Normal(Set(Int))
   Quantum(Dict(Int, Int))
 }
-
-// type Idk {
-//   Idk(elt: Element(Msg))
-// }
 
 type Model {
   Model(
@@ -243,6 +237,8 @@ fn next_beams(input: String, old: Beams) {
                       |> set.delete(letter_num)
                       |> set.insert(letter_num + 1)
                       |> set.insert(letter_num - 1),
+                    // this might insert a line on top of another char x or space or something
+                    // so we'll go remove those from set later
                     split_count + 1,
                   )
                   "." -> #(acc_set |> set.insert(letter_num), split_count)
@@ -251,6 +247,27 @@ fn next_beams(input: String, old: Beams) {
                 }
             }
             #(new_acc_set, letter_num, new_split_count)
+          },
+        )
+      let split_beams =
+        list.index_fold(
+          from: split_beams,
+          over: input |> string.to_graphemes,
+          with: fn(acc, letter, index) {
+            //let letter_num = acc.1 + 1
+            let acc_set = acc.0
+            let split_count = acc.2
+            case letter {
+              "." -> acc
+              "S" -> acc
+              "s" -> acc
+              // because we might have put a beam on a random char earlier
+              // which I want to block them
+              // also turns out index fold exists dont need awkward tuple but whatever
+              _ -> {
+                #(acc_set |> set.delete(index + 1), 0, split_count - 1)
+              }
+            }
           },
         )
       #(Normal(split_beams.0), Splits(split_beams.2))
@@ -311,6 +328,25 @@ fn next_beams(input: String, old: Beams) {
             #(new_acc_dict, letter_num)
           },
         )
+      let split_beams =
+        list.index_fold(
+          from: split_beams,
+          over: input |> string.to_graphemes,
+          with: fn(acc, letter, index) {
+            let acc_dict = acc.0
+            case letter {
+              "." -> acc
+              "S" -> acc
+              "s" -> acc
+              // because we might have put a beam on a random char earlier
+              // which I want to block them
+              // also turns out index fold exists dont need awkward tuple but whatever
+              _ -> {
+                #(acc_dict |> dict.delete(index + 1), 0)
+              }
+            }
+          },
+        )
       let count_quantum_beams =
         dict.fold(from: 0, over: split_beams.0, with: fn(acc, _, v) { acc + v })
       #(Quantum(split_beams.0), QTimelines(count_quantum_beams))
@@ -321,7 +357,6 @@ fn next_beams(input: String, old: Beams) {
 // VIEW ------------------------------------------------------------------------
 
 fn view(model: Model) -> Element(Msg) {
-  // let uhh = Idk(elt: h.p([], [h.text("hi")]))
   h.article(
     [
       a.style("display", "flex"),
@@ -329,10 +364,6 @@ fn view(model: Model) -> Element(Msg) {
       a.style("gap", "5px"),
     ],
     [
-      // uhh.elt,
-      // uhh.elt,
-      // uhh.elt,
-      // uhh.elt,
       h.h1([], [h.a([a.href("/")], [h.text("Correct Arity")])]),
       h.p([], [
         h.a([a.href("https://adventofcode.com/2025/day/7")], [

@@ -265,7 +265,14 @@ fn next_beams(input: String, old: Beams) {
               // which I want to block them
               // also turns out index fold exists dont need awkward tuple but whatever
               _ -> {
-                #(acc_set |> set.delete(index + 1), 0, split_count - 1)
+                case acc_set |> set.contains(index + 1) {
+                  False -> acc
+                  True -> #(
+                    acc_set |> set.delete(index + 1),
+                    0,
+                    split_count - 1,
+                  )
+                }
               }
             }
           },
